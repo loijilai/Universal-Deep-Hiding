@@ -29,8 +29,10 @@ import pdb
 import math
 import random
 import numpy as np
-from skimage.measure import compare_ssim as SSIM, compare_psnr as PSNR
+# from skimage.measure import compare_ssim as SSIM, compare_psnr as PSNR
+from skimage.metrics import structural_similarity as SSIM, peak_signal_noise_ratio as PSNR
 
+import csv
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', default="train",
@@ -40,7 +42,7 @@ parser.add_argument('--workers', type=int, default=8,
 # parser.add_argument('--batchSize', type=int, default=48,
 #                     help='input batch size')
 parser.add_argument('--imageSize', type=int, default=256,
-                    help='the number of frames')
+                    help='The image size')
 parser.add_argument('--epochs', type=int, default=65,
                     help='number of epochs to train for')
 parser.add_argument('--lr', type=float, default=0.001,
@@ -121,17 +123,17 @@ def save_current_codes(des_path):
     new_main_path = os.path.join(des_path, mainfile)
     shutil.copyfile(main_file_path, new_main_path)
 
-    data_dir = cur_work_dir + "/data/"
-    new_data_dir_path = des_path + "/data/"
-    shutil.copytree(data_dir, new_data_dir_path)
+    # data_dir = cur_work_dir + "/data/"
+    # new_data_dir_path = des_path + "/data/"
+    # shutil.copytree(data_dir, new_data_dir_path)
 
-    model_dir = cur_work_dir + "/models/"
-    new_model_dir_path = des_path + "/models/"
-    shutil.copytree(model_dir, new_model_dir_path)
+    # model_dir = cur_work_dir + "/models/"
+    # new_model_dir_path = des_path + "/models/"
+    # shutil.copytree(model_dir, new_model_dir_path)
 
-    utils_dir = cur_work_dir + "/utils/"
-    new_utils_dir_path = des_path + "/utils/"
-    shutil.copytree(utils_dir, new_utils_dir_path)
+    # utils_dir = cur_work_dir + "/utils/"
+    # new_utils_dir_path = des_path + "/utils/"
+    # shutil.copytree(utils_dir, new_utils_dir_path)
 
 
 def main():
@@ -146,21 +148,27 @@ def main():
 
     cudnn.benchmark = True
 
-    if opt.hostname == 'DL178':
-        DATA_DIR = '/media/user/SSD1TB-2/ImageNet' 
+    if opt.hostname == 'lai-lab':
+        DATA_DIR = '/home/lai/Research/coco/images' 
     assert DATA_DIR
 
 
     ############  Create the dirs to save the result ############
     if not opt.debug:
         try:
-            cur_time = time.strftime('%Y-%m-%d_H%H-%M-%S', time.localtime())
+            cur_time = time.strftime('%m-%d_H%H-%M-%S', time.localtime())
             if opt.test == '':
                 secret_comment = 'color' if opt.channel_secret == 3 else 'gray'
                 cover_comment = 'color' if opt.channel_cover == 3 else 'gray'
                 comment = str(opt.num_secret) + secret_comment + 'In' + str(opt.num_cover) + cover_comment
-                experiment_dir = opt.hostname + "_" + cur_time + "_" + str(opt.imageSize)+ "_"+ str(opt.num_secret) + "_"+ str(opt.num_training)+ "_" + \
-                str(opt.bs_secret)+ "_" + str(opt.ngpu)+ "_" + opt.norm+ "_" + opt.loss+ "_"+ str(opt.beta)+ "_"+ comment + "_" + opt.remark
+                experiment_dir = cur_time + "_" + \
+                                str(opt.imageSize)+ "_" + \
+                                str(opt.num_training)+ "_" + \
+                                opt.norm + "_" + \
+                                opt.loss + "_" + \
+                                str(opt.beta) + "_" + \
+                                comment + "_" + \
+                                opt.remark 
                 opt.outckpts += experiment_dir + "/checkPoints"
                 opt.trainpics += experiment_dir + "/trainPics"
                 opt.validationpics += experiment_dir + "/validationPics"
@@ -196,18 +204,20 @@ def main():
 
 
     ##################  Datasets  ##################
-    traindir = os.path.join(DATA_DIR, 'train')
-    valdir = os.path.join(DATA_DIR, 'val')
+    traindir = os.path.join(DATA_DIR, 'train2017')
+    valdir = os.path.join(DATA_DIR, 'val2017')
 
     transforms_color = transforms.Compose([ 
                 transforms.Resize([opt.imageSize, opt.imageSize]), 
                 transforms.ToTensor(),
+                transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
             ])  
 
     transforms_gray = transforms.Compose([ 
                 transforms.Grayscale(num_output_channels=1),
                 transforms.Resize([opt.imageSize, opt.imageSize]), 
                 transforms.ToTensor(),
+                transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
             ])    
     if opt.channel_cover == 1:  
         transforms_cover = transforms_gray
@@ -260,9 +270,17 @@ def main():
     if opt.norm == 'none':
         norm_layer = None
     if opt.cover_dependent:
-        Hnet = UnetGenerator(input_nc=opt.channel_secret*opt.num_secret+opt.channel_cover*opt.num_cover, output_nc=opt.channel_cover*opt.num_cover, num_downs=num_downs, norm_layer=norm_layer, output_function=nn.Sigmoid)
+        Hnet = UnetGenerator(input_nc=opt.channel_secret*opt.num_secret+opt.channel_cover*opt.num_cover, 
+                             output_nc=opt.channel_cover*opt.num_cover, 
+                             num_downs=num_downs, 
+                             norm_layer=norm_layer, 
+                             output_function=nn.Sigmoid)
     else:
-        Hnet = UnetGenerator(input_nc=opt.channel_secret*opt.num_secret, output_nc=opt.channel_cover*opt.num_cover, num_downs=num_downs, norm_layer=norm_layer, output_function=nn.Tanh)
+        Hnet = UnetGenerator(input_nc=opt.channel_secret*opt.num_secret, 
+                             output_nc=opt.channel_cover*opt.num_cover, 
+                             num_downs=num_downs, 
+                             norm_layer=norm_layer, 
+                             output_function=nn.Tanh)
     Rnet = RevealNet(input_nc=opt.channel_cover*opt.num_cover, output_nc=opt.channel_secret*opt.num_secret, nhf=64, norm_layer=norm_layer, output_function=nn.Sigmoid)
     
     if opt.cover_dependent:
@@ -273,14 +291,21 @@ def main():
     Hnet.apply(weights_init)
     Rnet.apply(weights_init)
 
-    HnetD = UnetGenerator(input_nc=opt.channel_secret*opt.num_secret+opt.channel_cover*opt.num_cover, output_nc=opt.channel_cover*opt.num_cover, num_downs=num_downs, norm_layer=norm_layer, output_function=nn.Sigmoid)
-    RnetD = RevealNet(input_nc=opt.channel_cover*opt.num_cover, output_nc=opt.channel_secret*opt.num_secret, nhf=64, norm_layer=norm_layer, output_function=nn.Sigmoid)
+    HnetD = UnetGenerator(input_nc=opt.channel_secret*opt.num_secret+opt.channel_cover*opt.num_cover, 
+                          output_nc=opt.channel_cover*opt.num_cover, 
+                          num_downs=num_downs, 
+                          norm_layer=norm_layer, 
+                          output_function=nn.Sigmoid)
+    RnetD = RevealNet(input_nc=opt.channel_cover*opt.num_cover, 
+                      output_nc=opt.channel_secret*opt.num_secret, 
+                      nhf=64, 
+                      norm_layer=norm_layer, 
+                      output_function=nn.Sigmoid)
     HnetD.apply(weights_init)
     RnetD.apply(weights_init)
 
-    ##### Always set to multiple GPU mode  #####
-    Hnet = torch.nn.DataParallel(Hnet).cuda()
-    Rnet = torch.nn.DataParallel(Rnet).cuda()
+    Hnet = Hnet.cuda()
+    Rnet = Rnet.cuda()
 
     HnetD = torch.nn.DataParallel(HnetD).cuda()
     RnetD = torch.nn.DataParallel(RnetD).cuda()
@@ -376,11 +401,11 @@ def save_checkpoint(state, is_best, epoch, prefix):
     if is_best:
         shutil.copyfile(filename, '%s/best_checkpoint.pth.tar'% opt.outckpts)
     if epoch == opt.epochs-1:
-        with open(opt.outckpts + prefix + '.csv', 'a') as csvfile:
+        with open(prefix + '.csv', 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
             #writer.writerow([epoch, loss, train1, train5, prec1, prec5])
 
-def forward_pass(secret_img, secret_target, cover_img, cover_target, Hnet, Rnet, criterion, val_cover=0, i_c=None, position=None, Se_two=None):
+def forward_pass(secret_img, cover_img, Hnet, Rnet, criterion, val_cover=0):
 
     batch_size_secret, channel_secret, _, _ = secret_img.size()
     batch_size_cover, channel_cover, _, _ = cover_img.size()
@@ -390,7 +415,7 @@ def forward_pass(secret_img, secret_target, cover_img, cover_target, Hnet, Rnet,
         cover_img = cover_img.cuda()
         secret_img = secret_img.cuda()
         #concat_img = concat_img.cuda()
-
+    # used when multiple images are being hidden simultaneously
     secret_imgv = secret_img.view(batch_size_secret // opt.num_secret, channel_secret * opt.num_secret, opt.imageSize, opt.imageSize)
     secret_imgv_nh = secret_imgv.repeat(opt.num_training,1,1,1)
 
@@ -421,30 +446,12 @@ def forward_pass(secret_img, secret_target, cover_img, cover_target, Hnet, Rnet,
         H_input = secret_imgv
 
     itm_secret_img = Hnet(H_input)
-    if i_c !=None:
-        if type(i_c) == type(1.0):
 
-            ####### To keep one channel #######
-            itm_secret_img_clone = itm_secret_img.clone()
-            itm_secret_img.fill_(0)
-            itm_secret_img[:,int(i_c):int(i_c)+1,:,:]=itm_secret_img_clone[:,int(i_c):int(i_c)+1,:,:]
-        if type(i_c) == type(1):
-            print('aaaaa', i_c)
-            ####### To set one channel to zero #######
-            itm_secret_img[:,i_c:i_c+1,:,:].fill_(0.0)
-
-    if position !=None:
-        itm_secret_img[:,:,position:position+1,position:position+1].fill_(0.0)
-    if Se_two == 2: 
-        itm_secret_img_half = itm_secret_img[0:batch_size_secret//2,:,:,:]
-        itm_secret_img = itm_secret_img + torch.cat((itm_secret_img_half.clone().fill_(0.0),itm_secret_img_half),0)
-    elif type(Se_two) == type(0.1):
-        itm_secret_img = itm_secret_img + Se_two*torch.rand(itm_secret_img.size()).cuda()
     if opt.cover_dependent:
         container_img = itm_secret_img
     else:
         itm_secret_img = itm_secret_img.repeat(opt.num_training,1,1,1)
-        container_img = itm_secret_img + cover_imgv
+        container_img = itm_secret_img + cover_imgv # WHY: cover_imgv has same size as itm_secret_img
     errH = criterion(container_img, cover_imgv)  # Hiding net
 
     rev_secret_img = Rnet(container_img) 
@@ -470,17 +477,17 @@ def train(train_loader, epoch, Hnet, Rnet, criterion):
 
     start_time = time.time()
 
-    for i, ((secret_img, secret_target), (cover_img, cover_target)) in enumerate(train_loader, 0):
+    for i, ((secret_img, _), (cover_img, _)) in enumerate(train_loader, 0):
 
         data_time.update(time.time() - start_time)
 
         cover_imgv, container_img, secret_imgv_nh, rev_secret_img, errH, errR, diffH, diffR \
-        = forward_pass(secret_img, secret_target, cover_img, cover_target, Hnet, Rnet, criterion)
+        = forward_pass(secret_img, cover_img, Hnet, Rnet, criterion)
 
-        Hlosses.update(errH.data[0], opt.bs_secret*opt.num_cover*opt.num_training)  # H loss
-        Rlosses.update(errR.data[0], opt.bs_secret*opt.num_secret*opt.num_training)  # R loss
-        Hdiff.update(diffH.data[0], opt.bs_secret*opt.num_cover*opt.num_training)
-        Rdiff.update(diffR.data[0], opt.bs_secret*opt.num_secret*opt.num_training)
+        Hlosses.update(errH.item(), opt.bs_secret*opt.num_cover*opt.num_training)  # H loss
+        Rlosses.update(errR.item(), opt.bs_secret*opt.num_secret*opt.num_training)  # R loss
+        Hdiff.update(diffH.item(), opt.bs_secret*opt.num_cover*opt.num_training)
+        Rdiff.update(diffR.item(), opt.bs_secret*opt.num_secret*opt.num_training)
 
         # Loss, backprop, and optimization step
         betaerrR_secret = opt.beta * errR
@@ -534,15 +541,15 @@ def validation(val_loader, epoch, Hnet, Rnet, criterion):
     Hdiff = AverageMeter()
     Rdiff = AverageMeter()
 
-    for i, ((secret_img, secret_target), (cover_img, cover_target)) in enumerate(val_loader, 0):
+    for i, ((secret_img, _), (cover_img, _)) in enumerate(val_loader, 0):
 
         cover_imgv, container_img, secret_imgv_nh, rev_secret_img, errH, errR, diffH, diffR \
-        = forward_pass(secret_img, secret_target, cover_img, cover_target, Hnet, Rnet, criterion, val_cover=1)
+        = forward_pass(secret_img, cover_img, Hnet, Rnet, criterion, val_cover=1)
 
-        Hlosses.update(errH.data[0], opt.bs_secret*opt.num_cover*opt.num_training)  # H loss
-        Rlosses.update(errR.data[0], opt.bs_secret*opt.num_secret*opt.num_training)  # R loss
-        Hdiff.update(diffH.data[0], opt.bs_secret*opt.num_cover*opt.num_training)
-        Rdiff.update(diffR.data[0], opt.bs_secret*opt.num_secret*opt.num_training)
+        Hlosses.update(errH.item(), opt.bs_secret*opt.num_cover*opt.num_training)  # H loss
+        Rlosses.update(errR.item(), opt.bs_secret*opt.num_secret*opt.num_training)  # R loss
+        Hdiff.update(diffH.item(), opt.bs_secret*opt.num_cover*opt.num_training)
+        Rdiff.update(diffR.item(), opt.bs_secret*opt.num_secret*opt.num_training)
 
         if i == 0:
             save_result_pic(opt.bs_secret*opt.num_training, cover_imgv, container_img.data, secret_imgv_nh, rev_secret_img.data, epoch, i, opt.validationpics)
@@ -587,11 +594,11 @@ def analysis(val_loader, epoch, Hnet, Rnet, HnetD, RnetD, criterion):
     import warnings
     warnings.filterwarnings("ignore")
 
-    for i, ((secret_img, secret_target), (cover_img, cover_target)) in enumerate(val_loader, 0):
+    for i, ((secret_img, _), (cover_img, _)) in enumerate(val_loader, 0):
 
         ####################################### Cover Agnostic #######################################
         cover_imgv, container_img, secret_imgv_nh, rev_secret_img, errH, errR, diffH, diffR \
-        = forward_pass(secret_img, secret_target, cover_img, cover_target, Hnet, Rnet, criterion, val_cover=1)
+        = forward_pass(secret_img, cover_img, Hnet, Rnet, criterion, val_cover=1)
         secret_encoded = container_img - cover_imgv
 
         save_result_pic_analysis(opt.bs_secret*opt.num_training, cover_imgv.clone(), container_img.clone(), secret_imgv_nh.clone(), rev_secret_img.clone(), epoch, i, opt.validationpics)
@@ -660,7 +667,7 @@ def analysis(val_loader, epoch, Hnet, Rnet, HnetD, RnetD, criterion):
 
         ####################################### Cover Agnostic S' #######################################
         cover_imgv, container_img, secret_imgv_nh, rev_secret_img, errH, errR, diffH, diffR \
-        = forward_pass(secret_img, secret_target, cover_img.clone().fill_(0.0), cover_target, Hnet, Rnet, criterion, val_cover=1)
+        = forward_pass(secret_img, cover_img.clone().fill_(0.0), Hnet, Rnet, criterion, val_cover=1)
         secret_encoded = container_img - cover_imgv
 
         N, _, _, _ = rev_secret_img.shape
@@ -708,7 +715,7 @@ def analysis(val_loader, epoch, Hnet, Rnet, HnetD, RnetD, criterion):
         ####################################### Cover Dependent #######################################
         opt.cover_dependent = True
         cover_imgv, container_img, secret_imgv_nh, rev_secret_img, errH, errR, diffH, diffR \
-        = forward_pass(secret_img, secret_target, cover_img, cover_target, HnetD, RnetD, criterion, val_cover=1)
+        = forward_pass(secret_img, cover_img, HnetD, RnetD, criterion, val_cover=1)
         secret_encoded = container_img - cover_imgv
 
         N, _, _, _ = rev_secret_img.shape

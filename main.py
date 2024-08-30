@@ -274,14 +274,14 @@ def main():
                              output_nc=opt.channel_cover*opt.num_cover, 
                              num_downs=num_downs, 
                              norm_layer=norm_layer, 
-                             output_function=nn.Sigmoid)
+                             output_function=nn.Tanh)
     else:
         Hnet = UnetGenerator(input_nc=opt.channel_secret*opt.num_secret, 
                              output_nc=opt.channel_cover*opt.num_cover, 
                              num_downs=num_downs, 
                              norm_layer=norm_layer, 
                              output_function=nn.Tanh)
-    Rnet = RevealNet(input_nc=opt.channel_cover*opt.num_cover, output_nc=opt.channel_secret*opt.num_secret, nhf=64, norm_layer=norm_layer, output_function=nn.Sigmoid)
+    Rnet = RevealNet(input_nc=opt.channel_cover*opt.num_cover, output_nc=opt.channel_secret*opt.num_secret, nhf=64, norm_layer=norm_layer, output_function=nn.Tanh)
     
     if opt.cover_dependent:
         assert opt.num_training == 1
@@ -295,20 +295,20 @@ def main():
                           output_nc=opt.channel_cover*opt.num_cover, 
                           num_downs=num_downs, 
                           norm_layer=norm_layer, 
-                          output_function=nn.Sigmoid)
+                          output_function=nn.Tanh)
     RnetD = RevealNet(input_nc=opt.channel_cover*opt.num_cover, 
                       output_nc=opt.channel_secret*opt.num_secret, 
                       nhf=64, 
                       norm_layer=norm_layer, 
-                      output_function=nn.Sigmoid)
+                      output_function=nn.Tanh)
     HnetD.apply(weights_init)
     RnetD.apply(weights_init)
 
     Hnet = Hnet.cuda()
     Rnet = Rnet.cuda()
 
-    HnetD = torch.nn.DataParallel(HnetD).cuda()
-    RnetD = torch.nn.DataParallel(RnetD).cuda()
+    HnetD = HnetD.cuda()
+    RnetD = RnetD.cuda()
 
     if opt.checkpoint != "":
         if opt.checkpoint_diff != "":
@@ -857,8 +857,8 @@ def save_result_pic(bs_secret_times_num_training, cover, container, secret, rev_
 
     cover_gap = container - cover
     secret_gap = rev_secret - secret
-    cover_gap = (cover_gap*10 + 0.5).clamp_(0.0, 1.0)
-    secret_gap = (secret_gap*10 + 0.5).clamp_(0.0, 1.0)
+    cover_gap = (cover_gap*10 + 0.5).clamp_(-1.0, 1.0)
+    secret_gap = (secret_gap*10 + 0.5).clamp_(-1.0, 1.0)
     #print(cover_gap.abs().sum(dim=-1).sum(dim=-1).sum(dim=-1), secret_gap.abs().sum(dim=-1).sum(dim=-1).sum(dim=-1))
 
     #showCover = torch.cat((cover, container, cover_gap),0)
@@ -886,11 +886,11 @@ def save_result_pic(bs_secret_times_num_training, cover, container, secret, rev_
     if opt.channel_secret == opt.channel_cover:
         showAll = torch.cat((showCover, showSecret),0)
         vutils.save_image(showAll, resultImgName, nrow=bs_secret_times_num_training, padding=1, normalize=True)
-    else:
-        ContainerImgName = '%s/ContainerPics_epoch%03d_batch%04d.png' % (save_path, epoch, i)
-        SecretImgName = '%s/SecretPics_epoch%03d_batch%04d.png' % (save_path, epoch, i)
-        vutils.save_image(showCover, ContainerImgName, nrow=bs_secret_times_num_training, padding=1, normalize=True)
-        vutils.save_image(showSecret, SecretImgName, nrow=bs_secret_times_num_training, padding=1, normalize=True)
+    # else:
+    #     ContainerImgName = '%s/ContainerPics_epoch%03d_batch%04d.png' % (save_path, epoch, i)
+    #     SecretImgName = '%s/SecretPics_epoch%03d_batch%04d.png' % (save_path, epoch, i)
+    #     vutils.save_image(showCover, ContainerImgName, nrow=bs_secret_times_num_training, padding=1, normalize=True)
+    #     vutils.save_image(showSecret, SecretImgName, nrow=bs_secret_times_num_training, padding=1, normalize=True)
 
 class AverageMeter(object):
     """

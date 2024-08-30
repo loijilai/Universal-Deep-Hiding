@@ -26,10 +26,11 @@ class UnetGenerator(nn.Module):
 
         self.model = unet_block
         self.tanh = output_function==nn.Tanh
-        if self.tanh:
-            self.factor = 10/255
-        else:
-            self.factor = 1.0
+        # if self.tanh:
+        #     self.factor = 10/255
+        # else:
+        #     self.factor = 1.0
+        self.factor = 1.0
 
     def forward(self, input):
         return self.factor*self.model(input)

@@ -74,17 +74,17 @@ def main():
                          output_nc=3, # container
                          num_downs=5, 
                          norm_layer=norm_layer, 
-                         output_function=nn.Sigmoid)
+                         output_function=nn.Tanh)
 
     Rnet = RevealNet(input_nc=3, 
                      output_nc=3, 
                      nhf=64, 
                      norm_layer=norm_layer, 
-                     output_function=nn.Sigmoid)
+                     output_function=nn.Tanh)
     
     ##### Always set to multiple GPU mode  #####
-    Hnet = torch.nn.DataParallel(Hnet).cuda()
-    Rnet = torch.nn.DataParallel(Rnet).cuda()
+    Hnet = Hnet.cuda()
+    Rnet = Rnet.cuda()
 
     ##### Loading checkpoints #####
     checkpoint = torch.load(opt.checkpoint)
@@ -142,8 +142,8 @@ def save_result_pic(bs_secret, cover, container, secret, rev_secret, save_path, 
 
     cover_gap = container - cover
     secret_gap = rev_secret - secret
-    cover_gap = (cover_gap*10 + 0.5).clamp_(0.0, 1.0)
-    secret_gap = (secret_gap*10 + 0.5).clamp_(0.0, 1.0)
+    cover_gap = (cover_gap*10 + 0.5).clamp_(-1.0, 1.0)
+    secret_gap = (secret_gap*10 + 0.5).clamp_(-1.0, 1.0)
 
     showCover = torch.cat((cover, container, cover_gap),0)
     showSecret = torch.cat((secret, rev_secret, secret_gap),0)
